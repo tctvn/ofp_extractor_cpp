@@ -1,0 +1,38 @@
+name: Build and Release
+
+on:
+  push:
+    branches: [ "main", "master" ]
+    tags:
+      - 'v*' # Kích hoạt khi có tag bắt đầu bằng 'v' (ví dụ: v1.0, v2.1)
+  pull_request:
+    branches: [ "main", "master" ]
+
+jobs:
+  build:
+    runs-on: windows-latest
+
+    steps:
+    - name: Checkout repository
+      uses: actions/checkout@v3
+
+    - name: Configure CMake
+      run: cmake -B build -S .
+
+    - name: Build
+      run: cmake --build build --config Release
+
+    - name: Upload Build Artifact (for testing)
+      if: startsWith(github.ref, 'refs/tags/') != true
+      uses: actions/upload-artifact@v3
+      with:
+        name: ofp_extractor-windows-exe
+        path: build/Release/ofp_extractor.exe
+
+    - name: Create Release and Upload Asset
+      if: startsWith(github.ref, 'refs/tags/')
+      uses: softprops/action-gh-release@v1
+      with:
+        files: build/Release/ofp_extractor.exe
+      env:
+        GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
