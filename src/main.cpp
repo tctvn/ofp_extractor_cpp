@@ -114,13 +114,13 @@ void mtk_getkey(size_t index, std::vector<uint8_t>& aeskey, std::vector<uint8_t>
         uint8_t md5_hash1[16];
         md5((uint8_t*)encaeskey.data(), 16, md5_hash1);
         std::string hex_hash1 = bin2hex(md5_hash1, 16);
-        aeskey = hex2bin(hex_hash1);
+        aeskey = std::vector<uint8_t>(hex_hash1.begin(), hex_hash1.begin() + 16);
         
         mtk_shuffle2(obskey.data(), 16, encaesiv.data(), 16);
         uint8_t md5_hash2[16];
         md5((uint8_t*)encaesiv.data(), 16, md5_hash2);
         std::string hex_hash2 = bin2hex(md5_hash2, 16);
-        aesiv = hex2bin(hex_hash2);
+        aesiv = std::vector<uint8_t>(hex_hash2.begin(), hex_hash2.begin() + 16);
     } else {
         aeskey = std::vector<uint8_t>(mtk_keytables[index][0].begin(), mtk_keytables[index][0].end());
         aesiv = std::vector<uint8_t>(mtk_keytables[index][1].begin(), mtk_keytables[index][1].end());
@@ -151,8 +151,10 @@ bool mtk_brutekey(std::ifstream& rf, std::vector<uint8_t>& out_aeskey, std::vect
 
 std::string clean_cstring(const char* input, size_t max_len) {
     std::string s;
-    for (size_t i = 0; i < max_len && input[i] != '\0'; i++) {
-        s += input[i];
+    for (size_t i = 0; i < max_len; i++) {
+        if (input[i] != '\0') {
+            s += input[i];
+        }
     }
     return s;
 }
@@ -160,6 +162,7 @@ std::string clean_cstring(const char* input, size_t max_len) {
 #pragma pack(push, 1)
 struct OFPHeader {
     char prjname[46];
+    char padding1[2];
     uint64_t unknownval;
     char reserved[4];
     char cpu[7];
@@ -185,7 +188,7 @@ bool extract_mtk(std::ifstream& rf, std::streamsize filesize, const std::string&
         return false; // Not MTK or unknown key
     }
     
-    std::cout << "[MTK] Key found! Extracting..." << std::endl;
+    std::cout << "[MTK] Key found! Extracting... (Filesize: " << filesize << ")" << std::endl;
     if (!fs::exists(outdir)) fs::create_directories(outdir);
     
     const size_t hdrlength = 0x6C;
@@ -195,6 +198,7 @@ bool extract_mtk(std::ifstream& rf, std::streamsize filesize, const std::string&
     rf.seekg(filesize - hdrlength, std::ios::beg);
     std::vector<uint8_t> hdr_data(hdrlength);
     rf.read((char*)hdr_data.data(), hdrlength);
+    std::cout << "  [DEBUG] Read " << rf.gcount() << " bytes for hdr_data" << std::endl;
     mtk_shuffle(hdrkey.data(), hdrkey.size(), hdr_data.data(), hdrlength);
     
     OFPHeader* hdr = reinterpret_cast<OFPHeader*>(hdr_data.data());
@@ -390,7 +394,7 @@ bool extract_qc(std::ifstream& rf, std::streamsize filesize, const std::string& 
             
             int64_t start = -1;
             if (item->Attribute("FileOffsetInSrc")) {
-                start = std::stoll(item->Attribute("FileOffsetInSrc")) * pagesize;
+                start = std::stoll(item->Attribute("FileOffsetInSrc"));
             } else if (item->Attribute("SizeInSectorInSrc")) { // This matches python logic but is strange
                 if (!item->Attribute("FileOffsetInSrc")) {
                    // Some nodes have it different
@@ -525,6 +529,7 @@ int main(int argc, char** argv) {
         success = true;
     } else {
         // Fallback to MTK
+        rf.clear();
         std::cout << "Checking MTK format..." << std::endl;
         if (extract_mtk(rf, filesize, outdir)) {
             success = true;
